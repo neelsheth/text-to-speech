@@ -15,4 +15,6 @@ use Illuminate\Support\Facades\Route;
 
 Route::get('/', [App\Http\Controllers\TextToSpeechController::class, 'index'])->name('tts.index');
 Route::post('/convert', [App\Http\Controllers\TextToSpeechController::class, 'convert'])->name('tts.convert');
+Route::post('/translate', [App\Http\Controllers\TextToSpeechController::class, 'translate'])->name('tts.translate');
+Route::get('/languages', [App\Http\Controllers\TextToSpeechController::class, 'getSupportedLanguages'])->name('tts.languages');
 Route::get('/voices', [App\Http\Controllers\TextToSpeechController::class, 'getVoices'])->name('tts.voices');

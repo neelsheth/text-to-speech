@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Text to Speech App</title>
+    <title>Text to Speech with Translation</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <style>
         body {
@@ -14,7 +14,7 @@
             min-height: 100vh;
         }
         .container {
-            max-width: 800px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             border-radius: 15px;
@@ -62,6 +62,7 @@
             cursor: pointer;
             transition: transform 0.2s;
             width: 100%;
+            margin-bottom: 10px;
         }
         .btn:hover {
             transform: translateY(-2px);
@@ -71,7 +72,19 @@
             cursor: not-allowed;
             transform: none;
         }
+        .btn-secondary {
+            background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+        }
         .settings {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        .language-selection {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
@@ -99,16 +112,102 @@
             border-radius: 5px;
             border-left: 4px solid #27ae60;
         }
+        .translations-container {
+            margin-top: 30px;
+            display: none;
+        }
+        .translation-item {
+            background: #f8f9fa;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+        }
+        .translation-header {
+            display: flex;
+            justify-content: between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .language-name {
+            font-weight: 600;
+            color: #495057;
+            font-size: 18px;
+        }
+        .translated-text {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        .speak-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+        .speak-btn:hover {
+            opacity: 0.9;
+        }
+        .selected-languages {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .language-tag {
+            background: #667eea;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .remove-lang {
+            cursor: pointer;
+            font-weight: bold;
+        }
+        .multi-select {
+            height: 150px;
+        }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🎤 Text to Speech Converter</h1>
+        <h1>🌍 Text to Speech with Translation</h1>
         
         <form id="ttsForm">
             <div class="form-group">
-                <label for="text">Enter your text:</label>
-                <textarea id="text" name="text" placeholder="Type or paste your text here..." required></textarea>
+                <label for="text">Enter your text (English):</label>
+                <textarea id="text" name="text" placeholder="Type or paste your English text here..." required></textarea>
+            </div>
+
+            <div class="language-selection">
+                <div class="form-group">
+                    <label for="targetLanguages">Select target languages:</label>
+                    <select id="targetLanguages" name="target_languages[]" multiple class="multi-select">
+                        <option value="">Loading languages...</option>
+                    </select>
+                    <div class="selected-languages" id="selectedLanguages"></div>
+                    <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
+                        ⚠️ Note: Translation service may have limitations. For best results, try common phrases like "Hello", "Good morning", "Thank you", etc.
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <button type="button" class="btn btn-secondary" id="translateBtn">
+                        🌐 Translate Text
+                    </button>
+                </div>
             </div>
 
             <div class="settings">
@@ -140,22 +239,55 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn" id="convertBtn">
-                🔊 Convert to Speech
+            <button type="button" class="btn btn-danger" id="stopBtn">
+                ⏹️ Stop Speech
             </button>
 
             <div class="loading" id="loading">
-                ⏳ Generating audio...
+                ⏳ Processing...
             </div>
 
             <div id="message"></div>
         </form>
+
+        <div class="translations-container" id="translationsContainer">
+            <h2>📝 Translations</h2>
+            <div id="translationsList"></div>
+        </div>
     </div>
 
     <script>
+        // Global variables
+        let availableLanguages = {};
+        let currentTranslations = {};
+        
         // Check if browser supports Web Speech API
         if (!('speechSynthesis' in window)) {
             document.getElementById('message').innerHTML = '<div class="error">❌ Your browser does not support Text-to-Speech. Please use a modern browser like Chrome, Firefox, Safari, or Edge.</div>';
+        }
+
+        // Load available languages
+        async function loadLanguages() {
+            try {
+                const response = await fetch('/languages');
+                const data = await response.json();
+                
+                if (data.success) {
+                    availableLanguages = data.languages;
+                    const languageSelect = document.getElementById('targetLanguages');
+                    languageSelect.innerHTML = '';
+                    
+                    Object.entries(availableLanguages).forEach(([code, name]) => {
+                        const option = document.createElement('option');
+                        option.value = code;
+                        option.textContent = name;
+                        languageSelect.appendChild(option);
+                    });
+                }
+            } catch (error) {
+                console.error('Error loading languages:', error);
+                document.getElementById('message').innerHTML = '<div class="error">❌ Error loading languages: ' + error.message + '</div>';
+            }
         }
 
         // Load available voices
@@ -174,6 +306,35 @@
                 }
                 voiceSelect.appendChild(option);
             });
+        }
+
+        // Update selected languages display
+        function updateSelectedLanguages() {
+            const select = document.getElementById('targetLanguages');
+            const container = document.getElementById('selectedLanguages');
+            const selectedOptions = Array.from(select.selectedOptions);
+            
+            container.innerHTML = '';
+            selectedOptions.forEach(option => {
+                const tag = document.createElement('div');
+                tag.className = 'language-tag';
+                tag.innerHTML = `
+                    ${availableLanguages[option.value]} 
+                    <span class="remove-lang" onclick="removeLanguage('${option.value}')">×</span>
+                `;
+                container.appendChild(tag);
+            });
+        }
+
+        // Remove language from selection
+        function removeLanguage(languageCode) {
+            const select = document.getElementById('targetLanguages');
+            const options = Array.from(select.options);
+            const option = options.find(opt => opt.value === languageCode);
+            if (option) {
+                option.selected = false;
+                updateSelectedLanguages();
+            }
         }
 
         // Load voices when they become available
@@ -201,32 +362,110 @@
             volumeValue.textContent = this.value;
         });
 
-        // Form submission with browser TTS
-        document.getElementById('ttsForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
+        // Language selection change
+        document.getElementById('targetLanguages').addEventListener('change', updateSelectedLanguages);
+
+        // Translate text
+        document.getElementById('translateBtn').addEventListener('click', async function() {
             const text = document.getElementById('text').value;
-            const voiceSelect = document.getElementById('voice');
-            const speed = parseFloat(document.getElementById('speed').value);
-            const pitch = parseFloat(document.getElementById('pitch').value);
-            const volume = parseFloat(document.getElementById('volume').value);
-            
-            const convertBtn = document.getElementById('convertBtn');
-            const loading = document.getElementById('loading');
-            const message = document.getElementById('message');
+            const selectedLanguages = Array.from(document.getElementById('targetLanguages').selectedOptions).map(opt => opt.value);
             
             if (!text.trim()) {
-                message.innerHTML = '<div class="error">❌ Please enter some text to convert.</div>';
+                document.getElementById('message').innerHTML = '<div class="error">❌ Please enter some text to translate.</div>';
+                return;
+            }
+            
+            if (selectedLanguages.length === 0) {
+                document.getElementById('message').innerHTML = '<div class="error">❌ Please select at least one target language.</div>';
                 return;
             }
 
-            // Show loading state
-            convertBtn.disabled = true;
-            convertBtn.textContent = 'Speaking...';
+            const translateBtn = document.getElementById('translateBtn');
+            const loading = document.getElementById('loading');
+            const message = document.getElementById('message');
+            
+            translateBtn.disabled = true;
+            translateBtn.textContent = '🌐 Translating...';
             loading.style.display = 'block';
-            loading.textContent = '🔊 Speaking...';
+            loading.textContent = '🌐 Translating text...';
             message.innerHTML = '';
 
+            try {
+                const formData = new FormData();
+                formData.append('text', text);
+                formData.append('_token', document.querySelector('meta[name="csrf-token"]').content);
+                selectedLanguages.forEach(lang => {
+                    formData.append('target_languages[]', lang);
+                });
+
+                const response = await fetch('/translate', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    currentTranslations = data.translations;
+                    displayTranslations(data);
+                    
+                    // Check if there are any errors
+                    if (Object.keys(data.errors).length > 0) {
+                        message.innerHTML = `<div class="success">✅ Successfully translated to ${data.total_translations} language(s)!</div><div class="error">⚠️ Some translations failed: ${Object.keys(data.errors).join(', ')}</div>`;
+                    } else {
+                        message.innerHTML = `<div class="success">✅ Successfully translated to ${data.total_translations} language(s)!</div>`;
+                    }
+                    
+                    // Check if any translations show service unavailable message
+                    const hasServiceIssues = Object.values(data.translations).some(t => 
+                        t.translated_text.includes('[Translation Service Temporarily Unavailable]')
+                    );
+                    
+                    if (hasServiceIssues) {
+                        message.innerHTML += '<div class="error">⚠️ Translation service is currently experiencing issues. Some translations may be limited.</div>';
+                    }
+                } else {
+                    message.innerHTML = '<div class="error">❌ Translation failed. Please try again.</div>';
+                }
+            } catch (error) {
+                message.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            } finally {
+                translateBtn.disabled = false;
+                translateBtn.textContent = '🌐 Translate Text';
+                loading.style.display = 'none';
+            }
+        });
+
+        // Display translations
+        function displayTranslations(data) {
+            const container = document.getElementById('translationsContainer');
+            const list = document.getElementById('translationsList');
+            
+            list.innerHTML = '';
+            
+            Object.values(data.translations).forEach(translation => {
+                const item = document.createElement('div');
+                item.className = 'translation-item';
+                item.innerHTML = `
+                    <div class="translation-header">
+                        <div class="language-name">${translation.language_name}</div>
+                    </div>
+                    <div class="translated-text">${translation.translated_text}</div>
+                    <button class="speak-btn" onclick="speakText('${translation.translated_text}', '${translation.language_code}')">
+                        🔊 Speak (${translation.language_name})
+                    </button>
+                    <button class="speak-btn" onclick="speakText('${data.original_text}', 'en')">
+                        🔊 Speak (English)
+                    </button>
+                `;
+                list.appendChild(item);
+            });
+            
+            container.style.display = 'block';
+        }
+
+        // Speak text
+        function speakText(text, languageCode) {
             try {
                 // Stop any current speech
                 speechSynthesis.cancel();
@@ -234,67 +473,53 @@
                 // Create new speech synthesis utterance
                 const utterance = new SpeechSynthesisUtterance(text);
                 
-                // Set voice if selected
-                if (voiceSelect.value) {
-                    const voices = speechSynthesis.getVoices();
-                    const selectedVoice = voices.find(voice => voice.voiceURI === voiceSelect.value);
-                    if (selectedVoice) {
-                        utterance.voice = selectedVoice;
-                    }
+                // Try to find a voice that matches the language
+                const voices = speechSynthesis.getVoices();
+                const matchingVoice = voices.find(voice => voice.lang.startsWith(languageCode));
+                if (matchingVoice) {
+                    utterance.voice = matchingVoice;
                 }
 
                 // Set speech parameters
+                const speed = parseFloat(document.getElementById('speed').value);
+                const pitch = parseFloat(document.getElementById('pitch').value);
+                const volume = parseFloat(document.getElementById('volume').value);
+                
                 utterance.rate = speed;
                 utterance.pitch = pitch;
                 utterance.volume = volume;
 
                 // Event handlers
                 utterance.onstart = function() {
-                    message.innerHTML = '<div class="success">🔊 Playing speech...</div>';
+                    document.getElementById('message').innerHTML = '<div class="success">🔊 Playing speech...</div>';
                 };
 
                 utterance.onend = function() {
-                    convertBtn.disabled = false;
-                    convertBtn.textContent = '🔊 Convert to Speech';
-                    loading.style.display = 'none';
-                    message.innerHTML = '<div class="success">✅ Speech completed!</div>';
+                    document.getElementById('message').innerHTML = '<div class="success">✅ Speech completed!</div>';
                 };
 
                 utterance.onerror = function(event) {
-                    convertBtn.disabled = false;
-                    convertBtn.textContent = '🔊 Convert to Speech';
-                    loading.style.display = 'none';
-                    message.innerHTML = `<div class="error">❌ Speech error: ${event.error}</div>`;
+                    document.getElementById('message').innerHTML = `<div class="error">❌ Speech error: ${event.error}</div>`;
                 };
 
                 // Start speaking
                 speechSynthesis.speak(utterance);
 
             } catch (error) {
-                convertBtn.disabled = false;
-                convertBtn.textContent = '🔊 Convert to Speech';
-                loading.style.display = 'none';
-                message.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+                document.getElementById('message').innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
             }
+        }
+
+        // Stop speech
+        document.getElementById('stopBtn').addEventListener('click', function() {
+            speechSynthesis.cancel();
+            document.getElementById('message').innerHTML = '<div class="success">⏹️ Speech stopped.</div>';
         });
 
-        // Add stop button functionality
+        // Initialize the app
         document.addEventListener('DOMContentLoaded', function() {
-            const form = document.getElementById('ttsForm');
-            const stopBtn = document.createElement('button');
-            stopBtn.type = 'button';
-            stopBtn.className = 'btn';
-            stopBtn.style.background = 'linear-gradient(135deg, #e74c3c 0%, #c0392b 100%)';
-            stopBtn.style.marginTop = '10px';
-            stopBtn.innerHTML = '⏹️ Stop Speech';
-            stopBtn.onclick = function() {
-                speechSynthesis.cancel();
-                document.getElementById('convertBtn').disabled = false;
-                document.getElementById('convertBtn').textContent = '🔊 Convert to Speech';
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('message').innerHTML = '<div class="success">⏹️ Speech stopped.</div>';
-            };
-            form.appendChild(stopBtn);
+            loadLanguages();
+            loadVoices();
         });
     </script>
 </body>
