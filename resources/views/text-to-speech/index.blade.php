@@ -199,7 +199,8 @@
                     </select>
                     <div class="selected-languages" id="selectedLanguages"></div>
                     <small style="color: #666; font-size: 12px; margin-top: 5px; display: block;">
-                        ⚠️ Note: Translation service may have limitations. For best results, try common phrases like "Hello", "Good morning", "Thank you", etc.
+                        ✅ <strong>Powered by Free Translation APIs:</strong> Using MyMemory API and LibreTranslate for real-time translations. No API keys required!<br>
+                        🔊 <strong>Voice Note:</strong> Hindi voices depend on your browser and operating system. Chrome typically has better language support.
                     </small>
                 </div>
 
@@ -216,6 +217,9 @@
                     <select id="voice" name="voice">
                         <option value="">Loading voices...</option>
                     </select>
+                    <small style="color: #666; font-size: 11px; margin-top: 5px; display: block;" id="voiceInfo">
+                        Checking available voices...
+                    </small>
                 </div>
 
                 <div class="form-group">
@@ -264,6 +268,14 @@
         // Check if browser supports Web Speech API
         if (!('speechSynthesis' in window)) {
             document.getElementById('message').innerHTML = '<div class="error">❌ Your browser does not support Text-to-Speech. Please use a modern browser like Chrome, Firefox, Safari, or Edge.</div>';
+        } else {
+            // Add helpful info about voice availability
+            setTimeout(() => {
+                const voiceInfo = document.getElementById('voiceInfo');
+                if (voiceInfo && voiceInfo.textContent === 'Checking available voices...') {
+                    voiceInfo.innerHTML = 'Loading voices... Different browsers have different voice support. Chrome typically has the most languages.';
+                }
+            }, 1000);
         }
 
         // Load available languages
@@ -297,7 +309,14 @@
             
             voiceSelect.innerHTML = '<option value="">Default Voice</option>';
             
-            voices.forEach((voice, index) => {
+            // Sort voices by language for better organization
+            const sortedVoices = voices.sort((a, b) => {
+                if (a.lang < b.lang) return -1;
+                if (a.lang > b.lang) return 1;
+                return 0;
+            });
+            
+            sortedVoices.forEach((voice, index) => {
                 const option = document.createElement('option');
                 option.value = voice.voiceURI;
                 option.textContent = `${voice.name} (${voice.lang})`;
@@ -306,6 +325,69 @@
                 }
                 voiceSelect.appendChild(option);
             });
+            
+            // Log available voices for debugging
+            console.log('Available voices:', sortedVoices.map(v => ({ 
+                name: v.name, 
+                lang: v.lang, 
+                default: v.default 
+            })));
+            
+            // Show voice count
+            const hindiVoices = voices.filter(v => v.lang.startsWith('hi'));
+            const nonEnglishVoices = voices.filter(v => !v.lang.startsWith('en'));
+            
+            console.log(`Total voices: ${voices.length}`);
+            console.log(`Hindi voices: ${hindiVoices.length}`);
+            console.log(`Non-English voices: ${nonEnglishVoices.length}`);
+            
+            if (hindiVoices.length > 0) {
+                console.log('Hindi voices found:', hindiVoices.map(v => v.name));
+            } else {
+                console.log('No Hindi voices found. Available languages:', [...new Set(voices.map(v => v.lang))]);
+            }
+            
+            // Update voice info display
+            const voiceInfo = document.getElementById('voiceInfo');
+            const availableLanguages = [...new Set(voices.map(v => v.lang))].sort();
+            const languageNames = {
+                'en': 'English', 'es': 'Spanish', 'fr': 'French', 'de': 'German', 
+                'hi': 'Hindi', 'ar': 'Arabic', 'zh': 'Chinese', 'ja': 'Japanese',
+                'ko': 'Korean', 'ru': 'Russian', 'it': 'Italian', 'pt': 'Portuguese',
+                'nl': 'Dutch', 'sv': 'Swedish', 'da': 'Danish', 'no': 'Norwegian',
+                'fi': 'Finnish', 'pl': 'Polish', 'cs': 'Czech', 'sk': 'Slovak',
+                'hu': 'Hungarian', 'ro': 'Romanian', 'bg': 'Bulgarian', 'hr': 'Croatian',
+                'sl': 'Slovenian', 'et': 'Estonian', 'lv': 'Latvian', 'lt': 'Lithuanian',
+                'mt': 'Maltese', 'el': 'Greek', 'tr': 'Turkish', 'he': 'Hebrew',
+                'th': 'Thai', 'vi': 'Vietnamese', 'id': 'Indonesian', 'ms': 'Malay',
+                'sw': 'Swahili', 'ur': 'Urdu', 'bn': 'Bengali', 'ta': 'Tamil',
+                'te': 'Telugu', 'ml': 'Malayalam', 'kn': 'Kannada', 'gu': 'Gujarati',
+                'pa': 'Punjabi', 'or': 'Odia', 'as': 'Assamese', 'ne': 'Nepali',
+                'si': 'Sinhala', 'my': 'Myanmar', 'km': 'Khmer', 'lo': 'Lao',
+                'ka': 'Georgian', 'hy': 'Armenian', 'az': 'Azerbaijani', 'kk': 'Kazakh',
+                'ky': 'Kyrgyz', 'uz': 'Uzbek', 'tg': 'Tajik', 'mn': 'Mongolian',
+                'be': 'Belarusian', 'uk': 'Ukrainian', 'mk': 'Macedonian', 'sq': 'Albanian',
+                'eu': 'Basque', 'ca': 'Catalan', 'gl': 'Galician', 'is': 'Icelandic',
+                'fa': 'Persian', 'ps': 'Pashto', 'sd': 'Sindhi', 'bo': 'Tibetan',
+                'dz': 'Dzongkha', 'am': 'Amharic', 'ti': 'Tigrinya', 'so': 'Somali',
+                'ha': 'Hausa', 'yo': 'Yoruba', 'ig': 'Igbo', 'zu': 'Zulu',
+                'af': 'Afrikaans', 'cy': 'Welsh', 'ga': 'Irish', 'gd': 'Scottish Gaelic',
+                'mt': 'Maltese', 'lb': 'Luxembourgish', 'rm': 'Romansh'
+            };
+            
+            const languageList = availableLanguages.map(lang => {
+                const name = languageNames[lang] || languageNames[lang.split('-')[0]] || lang;
+                return `${name} (${lang})`;
+            }).join(', ');
+            
+            voiceInfo.innerHTML = `Available languages: ${availableLanguages.length} total - ${languageList}`;
+            
+            // Highlight if Hindi is available
+            if (hindiVoices.length > 0) {
+                voiceInfo.innerHTML += `<br><strong style="color: #27ae60;">✅ Hindi voices available: ${hindiVoices.map(v => v.name).join(', ')}</strong>`;
+            } else {
+                voiceInfo.innerHTML += `<br><strong style="color: #e74c3c;">⚠️ No Hindi voices found. Text will be spoken in available language.</strong>`;
+            }
         }
 
         // Update selected languages display
@@ -446,18 +528,33 @@
             Object.values(data.translations).forEach(translation => {
                 const item = document.createElement('div');
                 item.className = 'translation-item';
-                item.innerHTML = `
-                    <div class="translation-header">
-                        <div class="language-name">${translation.language_name}</div>
-                    </div>
-                    <div class="translated-text">${translation.translated_text}</div>
-                    <button class="speak-btn" onclick="speakText('${translation.translated_text}', '${translation.language_code}')">
-                        🔊 Speak (${translation.language_name})
-                    </button>
-                    <button class="speak-btn" onclick="speakText('${data.original_text}', 'en')">
-                        🔊 Speak (English)
-                    </button>
-                `;
+                
+                const header = document.createElement('div');
+                header.className = 'translation-header';
+                header.innerHTML = `<div class="language-name">${translation.language_name}</div>`;
+                
+                const translatedText = document.createElement('div');
+                translatedText.className = 'translated-text';
+                translatedText.textContent = translation.translated_text;
+                
+                const speakBtn = document.createElement('button');
+                speakBtn.className = 'speak-btn';
+                speakBtn.innerHTML = `🔊 Speak (${translation.language_name})`;
+                speakBtn.addEventListener('click', function() {
+                    speakText(translation.translated_text, translation.language_code);
+                });
+                
+                const speakEnglishBtn = document.createElement('button');
+                speakEnglishBtn.className = 'speak-btn';
+                speakEnglishBtn.innerHTML = '🔊 Speak (English)';
+                speakEnglishBtn.addEventListener('click', function() {
+                    speakText(data.original_text, 'en');
+                });
+                
+                item.appendChild(header);
+                item.appendChild(translatedText);
+                item.appendChild(speakBtn);
+                item.appendChild(speakEnglishBtn);
                 list.appendChild(item);
             });
             
@@ -473,12 +570,65 @@
                 // Create new speech synthesis utterance
                 const utterance = new SpeechSynthesisUtterance(text);
                 
-                // Try to find a voice that matches the language
+                // Get all available voices
                 const voices = speechSynthesis.getVoices();
-                const matchingVoice = voices.find(voice => voice.lang.startsWith(languageCode));
+                console.log('Available voices:', voices.map(v => ({ name: v.name, lang: v.lang })));
+                
+                // Try to find a voice that matches the language
+                let matchingVoice = null;
+                let voiceInfo = '';
+                
+                // First, try exact language match
+                matchingVoice = voices.find(voice => voice.lang === languageCode);
+                if (matchingVoice) {
+                    voiceInfo = `Using exact match: ${matchingVoice.name} (${matchingVoice.lang})`;
+                } else {
+                    // Try language family match (e.g., hi-IN, hi for Hindi)
+                    matchingVoice = voices.find(voice => voice.lang.startsWith(languageCode));
+                    if (matchingVoice) {
+                        voiceInfo = `Using language family match: ${matchingVoice.name} (${matchingVoice.lang})`;
+                    } else {
+                        // Try alternative language codes
+                        const alternativeCodes = {
+                            'hi': ['hi-IN', 'hi-GB', 'hi-US', 'ur', 'ur-PK'], // Hindi alternatives
+                            'es': ['es-ES', 'es-MX', 'es-AR', 'es-CO'], // Spanish alternatives
+                            'fr': ['fr-FR', 'fr-CA', 'fr-BE'], // French alternatives
+                            'de': ['de-DE', 'de-AT', 'de-CH'], // German alternatives
+                            'ar': ['ar-SA', 'ar-EG', 'ar-AE'], // Arabic alternatives
+                            'zh': ['zh-CN', 'zh-TW', 'zh-HK'], // Chinese alternatives
+                            'ja': ['ja-JP'], // Japanese alternatives
+                            'ko': ['ko-KR'], // Korean alternatives
+                            'ru': ['ru-RU'], // Russian alternatives
+                        };
+                        
+                        if (alternativeCodes[languageCode]) {
+                            for (const altCode of alternativeCodes[languageCode]) {
+                                matchingVoice = voices.find(voice => voice.lang === altCode);
+                                if (matchingVoice) {
+                                    voiceInfo = `Using alternative code: ${matchingVoice.name} (${matchingVoice.lang})`;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // If still no match, try to find any non-English voice
+                if (!matchingVoice) {
+                    matchingVoice = voices.find(voice => !voice.lang.startsWith('en') && voice.lang !== 'en');
+                    if (matchingVoice) {
+                        voiceInfo = `Using non-English voice: ${matchingVoice.name} (${matchingVoice.lang})`;
+                    } else {
+                        voiceInfo = 'Using default voice (English)';
+                    }
+                }
+                
+                // Set the voice
                 if (matchingVoice) {
                     utterance.voice = matchingVoice;
                 }
+                
+                console.log(`Speaking: "${text}" in ${languageCode} with voice: ${voiceInfo}`);
 
                 // Set speech parameters
                 const speed = parseFloat(document.getElementById('speed').value);
@@ -491,7 +641,7 @@
 
                 // Event handlers
                 utterance.onstart = function() {
-                    document.getElementById('message').innerHTML = '<div class="success">🔊 Playing speech...</div>';
+                    document.getElementById('message').innerHTML = `<div class="success">🔊 Playing speech... (${voiceInfo})</div>`;
                 };
 
                 utterance.onend = function() {
@@ -499,7 +649,7 @@
                 };
 
                 utterance.onerror = function(event) {
-                    document.getElementById('message').innerHTML = `<div class="error">❌ Speech error: ${event.error}</div>`;
+                    document.getElementById('message').innerHTML = `<div class="error">❌ Speech error: ${event.error} (Voice: ${voiceInfo})</div>`;
                 };
 
                 // Start speaking

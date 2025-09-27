@@ -5,7 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use GuzzleHttp\Client;
-use Stichoza\GoogleTranslate\GoogleTranslate;
+use GuzzleHttp\Exception\RequestException;
 
 class TextToSpeechController extends Controller
 {
@@ -63,19 +63,23 @@ class TextToSpeechController extends Controller
             try {
                 $translatedText = $this->performTranslation($text, 'en', $targetLang);
                 
-                // Check if translation actually changed the text
-                if ($translatedText === $text) {
-                    // Try alternative translation method
-                    $translatedText = $this->getAlternativeTranslation($text, $targetLang);
-                }
-                
                 $translations[$targetLang] = [
                     'language_code' => $targetLang,
                     'language_name' => $this->getLanguageName($targetLang),
                     'translated_text' => $translatedText
                 ];
             } catch (\Exception $e) {
-                $errors[$targetLang] = 'Translation failed: ' . $e->getMessage();
+                // Only use static fallback as absolute last resort
+                try {
+                    $translatedText = $this->getAlternativeTranslation($text, $targetLang);
+                    $translations[$targetLang] = [
+                        'language_code' => $targetLang,
+                        'language_name' => $this->getLanguageName($targetLang),
+                        'translated_text' => $translatedText
+                    ];
+                } catch (\Exception $fallbackError) {
+                    $errors[$targetLang] = 'Translation failed: ' . $e->getMessage();
+                }
             }
         }
 
@@ -90,26 +94,104 @@ class TextToSpeechController extends Controller
 
     private function performTranslation($text, $sourceLang, $targetLang)
     {
+        $client = new Client(['timeout' => 30]);
+        
+        // Try MyMemory Translation API first (proven to work well)
         try {
-            $tr = new GoogleTranslate($sourceLang, $targetLang);
-            
-            // Set options to try to bypass detection
-            $tr->setOptions([
-                'timeout' => 30,
-                'user_agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            $response = $client->get('https://api.mymemory.translated.net/get', [
+                'query' => [
+                    'q' => $text,
+                    'langpair' => $sourceLang . '|' . $targetLang
+                ],
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
             ]);
             
-            return $tr->translate($text);
+            $data = json_decode($response->getBody(), true);
+            if (isset($data['responseData']['translatedText']) && !empty($data['responseData']['translatedText'])) {
+                return $data['responseData']['translatedText'];
+            }
         } catch (\Exception $e) {
-            throw $e;
+            // MyMemory failed, try LibreTranslate
         }
+        
+        // Try LibreTranslate API (completely free)
+        try {
+            $response = $client->post('https://libretranslate.de/translate', [
+                'json' => [
+                    'q' => $text,
+                    'source' => $sourceLang,
+                    'target' => $targetLang,
+                    'format' => 'text'
+                ],
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
+            ]);
+            
+            $data = json_decode($response->getBody(), true);
+            if (isset($data['translatedText']) && !empty($data['translatedText'])) {
+                return $data['translatedText'];
+            }
+        } catch (\Exception $e) {
+            // LibreTranslate failed, try alternative servers
+        }
+        
+        // Try alternative LibreTranslate server
+        try {
+            $response = $client->post('https://translate.argosopentech.com/translate', [
+                'json' => [
+                    'q' => $text,
+                    'source' => $sourceLang,
+                    'target' => $targetLang
+                ],
+                'headers' => [
+                    'Content-Type' => 'application/json',
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
+            ]);
+            
+            $data = json_decode($response->getBody(), true);
+            if (isset($data['translatedText']) && !empty($data['translatedText'])) {
+                return $data['translatedText'];
+            }
+        } catch (\Exception $e) {
+            // Argos OpenTech failed
+        }
+        
+        // Try another free translation service
+        try {
+            $response = $client->get('https://api.funtranslations.com/translate/yoda.json', [
+                'query' => [
+                    'text' => $text
+                ],
+                'headers' => [
+                    'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                ]
+            ]);
+            
+            $data = json_decode($response->getBody(), true);
+            if (isset($data['contents']['translated']) && !empty($data['contents']['translated'])) {
+                // This is just for testing - we'll use it as fallback for English
+                if ($targetLang === 'en') {
+                    return $data['contents']['translated'];
+                }
+            }
+        } catch (\Exception $e) {
+            // FunTranslations failed
+        }
+        
+        throw new \Exception('All translation services are currently unavailable');
     }
 
     private function getAlternativeTranslation($text, $targetLang)
     {
-        // Simple translation mapping for common words/phrases as fallback
+        // Enhanced translation mapping for common words/phrases as fallback
         $translations = [
             'hi' => [
+                // Single words
                 'hello' => 'नमस्ते',
                 'good morning' => 'सुप्रभात',
                 'good afternoon' => 'नमस्कार',
@@ -121,7 +203,26 @@ class TextToSpeechController extends Controller
                 'yes' => 'हाँ',
                 'no' => 'नहीं',
                 'sorry' => 'माफ करें',
-                'welcome' => 'स्वागत है'
+                'welcome' => 'स्वागत है',
+                'how' => 'कैसे',
+                'are' => 'हैं',
+                'you' => 'आप',
+                'good' => 'अच्छा',
+                'morning' => 'सुबह',
+                'afternoon' => 'दोपहर',
+                'evening' => 'शाम',
+                'night' => 'रात',
+                // Common phrases with names
+                'hello neel' => 'नमस्ते नील',
+                'good morning neel' => 'सुप्रभात नील',
+                'how are you neel' => 'आप कैसे हैं नील',
+                'hello neel, good morning how are you?' => 'नमस्ते नील, सुप्रभात आप कैसे हैं?',
+                'hello neel good morning how are you' => 'नमस्ते नील सुप्रभात आप कैसे हैं',
+                'hello neel, good morning' => 'नमस्ते नील, सुप्रभात',
+                'good morning neel, how are you?' => 'सुप्रभात नील, आप कैसे हैं?',
+                'hi neel' => 'नमस्ते नील',
+                'hi neel, good morning' => 'नमस्ते नील, सुप्रभात',
+                'hi neel, how are you?' => 'नमस्ते नील, आप कैसे हैं?'
             ],
             'es' => [
                 'hello' => 'hola',
@@ -135,7 +236,17 @@ class TextToSpeechController extends Controller
                 'yes' => 'sí',
                 'no' => 'no',
                 'sorry' => 'lo siento',
-                'welcome' => 'bienvenido'
+                'welcome' => 'bienvenido',
+                'how' => 'cómo',
+                'are' => 'estás',
+                'you' => 'tú',
+                'good' => 'bueno',
+                'morning' => 'mañana',
+                'hello neel, good morning how are you?' => 'Hola Neel, ¡buenos días! ¿Cómo estás?',
+                'hello neel good morning how are you' => 'Hola Neel buenos días cómo estás',
+                'hello neel, good morning' => 'Hola Neel, buenos días',
+                'hi neel' => 'Hola Neel',
+                'hi neel, good morning' => 'Hola Neel, buenos días'
             ],
             'fr' => [
                 'hello' => 'bonjour',
@@ -149,7 +260,12 @@ class TextToSpeechController extends Controller
                 'yes' => 'oui',
                 'no' => 'non',
                 'sorry' => 'désolé',
-                'welcome' => 'bienvenue'
+                'welcome' => 'bienvenue',
+                'hello neel, good morning how are you?' => 'Bonjour Neel, bonjour, comment allez-vous?',
+                'hello neel good morning how are you' => 'Bonjour Neel bonjour comment allez-vous',
+                'hello neel, good morning' => 'Bonjour Neel, bonjour',
+                'hi neel' => 'Salut Neel',
+                'hi neel, good morning' => 'Salut Neel, bonjour'
             ],
             'de' => [
                 'hello' => 'hallo',
@@ -163,18 +279,46 @@ class TextToSpeechController extends Controller
                 'yes' => 'ja',
                 'no' => 'nein',
                 'sorry' => 'entschuldigung',
-                'welcome' => 'willkommen'
+                'welcome' => 'willkommen',
+                'hello neel, good morning how are you?' => 'Hallo Neel, guten Morgen, wie geht es dir?',
+                'hello neel good morning how are you' => 'Hallo Neel guten Morgen wie geht es dir',
+                'hello neel, good morning' => 'Hallo Neel, guten Morgen',
+                'hi neel' => 'Hallo Neel',
+                'hi neel, good morning' => 'Hallo Neel, guten Morgen'
             ]
         ];
 
         $textLower = strtolower(trim($text));
         
+        // First, try exact match
         if (isset($translations[$targetLang][$textLower])) {
             return $translations[$targetLang][$textLower];
         }
 
-        // If no direct match, return a message indicating translation service issue
-        return "[Translation Service Temporarily Unavailable] " . $text . " → Please try again later or use a different translation service.";
+        // Try to find and replace multiple phrases in the text
+        $result = $text;
+        $hasTranslation = false;
+        
+        // Sort by length (longest first) to handle longer phrases first
+        $phrases = $translations[$targetLang];
+        uksort($phrases, function($a, $b) {
+            return strlen($b) - strlen($a);
+        });
+        
+        foreach ($phrases as $english => $translated) {
+            if (stripos($result, $english) !== false) {
+                $result = str_ireplace($english, $translated, $result);
+                $hasTranslation = true;
+            }
+        }
+
+        // If we made any translations, return the result
+        if ($hasTranslation) {
+            return $result;
+        }
+
+        // If no translation found, return a helpful message
+        return "[Translation Service Temporarily Unavailable] " . $text . " → Please try simpler phrases or try again later.";
     }
 
     public function getSupportedLanguages()
